@@ -19,6 +19,8 @@ int __DEINIT_FLAGS__[];
 #include <iCustom/icNonLagMA.mqh>
 
 
+double maxBarSize;
+
 // OrderSend() defaults
 string os.name        = "LH4";
 int    os.magicNumber = 43210;
@@ -43,18 +45,20 @@ int onTick() {
  * @return bool - success status
  */
 bool CheckOpenSignal() {
-   int oe[ORDER_EXECUTION.intSize];
-   int type, trend = GetNonLagMATrend(1); if (!trend) return(false);
+   if (__STATUS_OFF) return(false);
 
-   // wait for trend change of last bar
+   int trend = GetNonLagMATrend(1); if (!trend) return(false);
+
+   // wait for a trend change of the last bar
    if (Abs(trend) == 1) {
+      int type, oe[ORDER_EXECUTION.intSize];
       debug("CheckOpenSignal(1)  "+ TimeToStr(TimeCurrent(), TIME_FULL) +"  NonLagMA turned "+ ifString(trend==1, "up", "down"));
 
-      int orders = OrdersTotal();                                 // lazy, works in Tester only
+      int orders = OrdersTotal();                                 // lazy, for Tester only
       if (orders > 0) {
          OrderSelect(0, SELECT_BY_POS);
-         if (OrderType() <= OP_SELL)
-            return(true);                                         // continue with open position
+         if (OrderType() <= OP_SELL)                              // continue on open position
+            return(true);
          if (!OrderDeleteEx(OrderTicket(), CLR_NONE, NULL, oe))   // delete not yet triggered pending order
             return(false);
       }
@@ -63,13 +67,16 @@ bool CheckOpenSignal() {
       double high    = iHigh(NULL, PERIOD_H4, 1);
       double low     =  iLow(NULL, PERIOD_H4, 1);
       double barSize = (high-low)/Pip;
-      debug("CheckOpenSignal(2)  last bar: H="+ NumberToStr(high, PriceFormat) +"  L="+ NumberToStr(low, PriceFormat) +"  size="+ DoubleToStr(barSize, Digits & 1));
+
+      if (barSize > maxBarSize) {
+         maxBarSize = barSize;
+         debug("CheckOpenSignal(2)  maxBarSize: "+ DoubleToStr(maxBarSize, Digits & 1));
+      }
 
       // determine order limits
       double entryPrice = ifDouble(trend==1, high, low);
       double stopLoss   = ifDouble(trend==1, low, high);
       double takeProfit = ifDouble(trend==1, high + 1.5*barSize*Pip, low - 1.5*barSize*Pip);
-      debug("CheckOpenSignal(3)  limit="+ NumberToStr(entryPrice, PriceFormat) +"  TP="+ NumberToStr(takeProfit, PriceFormat) +"  SL="+ NumberToStr(stopLoss, PriceFormat));
 
       // submit a new pending order
       if (trend == 1) {
@@ -89,7 +96,7 @@ bool CheckOpenSignal() {
       if (!OrderSendEx(NULL, type, lots, entryPrice, slippage, stopLoss, takeProfit, os.name, os.magicNumber, NULL, markerColor, NULL, oe))
          return(false);
    }
-   return(!catch("CheckOpenSignal(4)"));
+   return(!catch("CheckOpenSignal(3)"));
 }
 
 
